@@ -53,6 +53,10 @@ function load_dashboard_data(string $db_file): array {
             $links[$id]['row_id'] = '_default';
             $needs_save = true;
         }
+        if (!array_key_exists('order', $link) || !is_numeric($link['order'])) {
+            $links[$id]['order'] = 0;
+            $needs_save = true;
+        }
     }
 
     return ['rows' => $rows, 'links' => $links, 'needs_save' => $needs_save];
@@ -61,6 +65,20 @@ function load_dashboard_data(string $db_file): array {
 function save_dashboard_data(string $db_file, array $rows, array $links): void {
     $payload = ['rows' => $rows, 'links' => $links];
     file_put_contents($db_file, json_encode($payload, JSON_UNESCAPED_UNICODE));
+}
+
+function next_link_order(array $links, string $row_id): int {
+    $max_order = -1;
+    foreach ($links as $link) {
+        if (!is_array($link)) {
+            continue;
+        }
+        if (($link['row_id'] ?? '_default') !== $row_id) {
+            continue;
+        }
+        $max_order = max($max_order, (int)($link['order'] ?? 0));
+    }
+    return $max_order + 1;
 }
 
 $data = load_dashboard_data($db_file);
@@ -521,7 +539,8 @@ if (isset($_POST['url']) && !isset($_POST['delete_id']) && !isset($_POST['update
         'url' => $url,
         'description' => 'Новый сервис',
         'icon' => $icon,
-        'row_id' => $target_row_id
+        'row_id' => $target_row_id,
+        'order' => next_link_order($links, $target_row_id)
     ];
     save_dashboard_data($db_file, $rows, $links);
     header("Location: " . $_SERVER['PHP_SELF']);
@@ -653,6 +672,34 @@ if (isset($_POST['move_card_id'], $_POST['target_row_id'])) {
     exit;
 }
 
+// 8b. Сохранение полного порядка карточек в категориях
+if (isset($_POST['save_cards_layout'])) {
+    $raw_layout = $_POST['cards_layout'] ?? '[]';
+    $layout = json_decode((string)$raw_layout, true);
+    if (is_array($layout)) {
+        foreach ($layout as $row_layout) {
+            if (!is_array($row_layout)) {
+                continue;
+            }
+            $row_id = $row_layout['row_id'] ?? '';
+            $card_ids = $row_layout['card_ids'] ?? [];
+            if (!is_string($row_id) || !isset($rows[$row_id]) || !is_array($card_ids)) {
+                continue;
+            }
+            $order = 0;
+            foreach ($card_ids as $card_id) {
+                if (!is_string($card_id) || !isset($links[$card_id])) {
+                    continue;
+                }
+                $links[$card_id]['row_id'] = $row_id;
+                $links[$card_id]['order'] = $order++;
+            }
+        }
+        save_dashboard_data($db_file, $rows, $links);
+    }
+    exit;
+}
+
 // 9. Сохранение порядка rows
 if (isset($_POST['save_row_order'])) {
     $raw_order = $_POST['row_order'] ?? '[]';
@@ -702,7 +749,7 @@ $links_by_row = [];
 foreach ($rows_sorted as $rid => $row_meta) {
     $links_by_row[$rid] = [];
 }
-foreach (array_reverse($links, true) as $id => $link) {
+foreach ($links as $id => $link) {
     $rid = $link['row_id'] ?? $default_row_id;
     if (!isset($links_by_row[$rid])) {
         $links_by_row[$default_row_id][] = ['id' => $id, 'link' => $link];
@@ -710,6 +757,17 @@ foreach (array_reverse($links, true) as $id => $link) {
         $links_by_row[$rid][] = ['id' => $id, 'link' => $link];
     }
 }
+foreach ($links_by_row as $rid => &$entries) {
+    usort($entries, function ($a, $b) {
+        $ao = (int)($a['link']['order'] ?? 0);
+        $bo = (int)($b['link']['order'] ?? 0);
+        if ($ao === $bo) {
+            return strcmp((string)$a['id'], (string)$b['id']);
+        }
+        return $ao <=> $bo;
+    });
+}
+unset($entries);
 ?>
 
 <!DOCTYPE html>
@@ -1193,6 +1251,21 @@ foreach (array_reverse($links, true) as $id => $link) {
         await fetch('', { method: 'POST', body: formData });
     }
 
+    async function saveCardsLayout() {
+        const cardsLayout = Array.from(document.querySelectorAll('.row-dropzone')).map((zone) => {
+            const rowId = zone.dataset.rowId || '';
+            const cardIds = Array.from(zone.querySelectorAll('.service-card')).map((card) => card.dataset.cardId).filter(Boolean);
+            return { row_id: rowId, card_ids: cardIds };
+        });
+        const formData = new FormData();
+        formData.append('save_cards_layout', '1');
+        formData.append('cards_layout', JSON.stringify(cardsLayout));
+        const response = await fetch('', { method: 'POST', body: formData });
+        if (!response.ok) {
+            throw new Error('layout save failed');
+        }
+    }
+
     document.querySelectorAll('.service-card').forEach((card) => {
         card.addEventListener('click', () => {
             const url = card.getAttribute('data-url');
@@ -1211,6 +1284,42 @@ foreach (array_reverse($links, true) as $id => $link) {
             card.style.opacity = '1';
             draggedCardId = null;
             document.querySelectorAll('.row-dropzone').forEach((z) => z.classList.remove('dropzone-active'));
+        });
+        card.addEventListener('dragover', (event) => {
+            if (!draggedCardId) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        });
+        card.addEventListener('drop', async (event) => {
+            event.preventDefault();
+            const targetCard = card;
+            const draggedId = draggedCardId || (event.dataTransfer ? event.dataTransfer.getData('text/plain') : '');
+            if (!draggedId || draggedId === targetCard.dataset.cardId) return;
+            const draggedCard = document.querySelector(`.service-card[data-card-id="${draggedId}"]`);
+            if (!draggedCard) return;
+
+            const targetZone = targetCard.closest('.row-dropzone');
+            const oldZone = draggedCard.closest('.row-dropzone');
+            if (!targetZone) return;
+
+            const targetRect = targetCard.getBoundingClientRect();
+            const placeAfter = event.clientY > targetRect.top + targetRect.height / 2;
+            if (placeAfter) {
+                targetCard.insertAdjacentElement('afterend', draggedCard);
+            } else {
+                targetCard.insertAdjacentElement('beforebegin', draggedCard);
+            }
+
+            targetZone.classList.remove('row-dropzone-empty');
+            if (oldZone && !oldZone.querySelector('.service-card')) {
+                oldZone.classList.add('row-dropzone-empty');
+            }
+
+            try {
+                await saveCardsLayout();
+            } catch (e) {
+                iconSearchStatus.textContent = 'Не удалось сохранить порядок карточек.';
+            }
         });
     });
 
@@ -1287,6 +1396,9 @@ foreach (array_reverse($links, true) as $id => $link) {
         zone.addEventListener('drop', async (event) => {
             event.preventDefault();
             zone.classList.remove('dropzone-active');
+            if (event.target && event.target.closest('.service-card')) {
+                return;
+            }
             const cardId = draggedCardId || (event.dataTransfer ? event.dataTransfer.getData('text/plain') : '');
             const targetRowId = zone.dataset.rowId;
             if (!cardId || !targetRowId) return;
@@ -1296,21 +1408,16 @@ foreach (array_reverse($links, true) as $id => $link) {
             const currentRowId = cardEl.dataset.rowId || '';
             if (currentRowId === targetRowId) return;
 
-            const formData = new FormData();
-            formData.append('move_card_id', cardId);
-            formData.append('target_row_id', targetRowId);
             try {
-                const response = await fetch('', { method: 'POST', body: formData });
-                if (!response.ok) throw new Error();
                 const oldZone = cardEl.closest('.row-dropzone');
-                cardEl.dataset.rowId = targetRowId;
                 zone.appendChild(cardEl);
                 zone.classList.remove('row-dropzone-empty');
                 if (oldZone && oldZone !== zone && !oldZone.querySelector('.service-card')) {
                     oldZone.classList.add('row-dropzone-empty');
                 }
+                await saveCardsLayout();
             } catch (e) {
-                iconSearchStatus.textContent = 'Не удалось переместить карточку.';
+                iconSearchStatus.textContent = 'Не удалось сохранить порядок карточек.';
             }
         });
     });
