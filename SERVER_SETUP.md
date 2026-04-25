@@ -1,10 +1,8 @@
 # Установка на сервер и права
 
-Инструкция для Linux-сервера с Nginx + PHP-FPM (аналогично для Apache).
+Инструкция для Linux-сервера (Nginx + PHP-FPM). Для Apache логика аналогичная: главное — правильно настроить права на запись.
 
 ## 1) Размещение проекта
-
-Пример:
 
 ```bash
 sudo mkdir -p /var/www/homeserver-dashboard
@@ -12,17 +10,18 @@ sudo cp -r . /var/www/homeserver-dashboard/
 cd /var/www/homeserver-dashboard
 ```
 
-## 2) Создание каталога кэша иконок
+## 2) Подготовка директорий и данных
 
 ```bash
 mkdir -p icons-cache
+test -f links.json || echo '{"rows":{"_default":{"name":"","order":0,"collapsed":false}},"links":{}}' > links.json
 ```
 
-## 3) Права доступа (обязательно)
+## 3) Права (критично)
 
-Приложение должно иметь право записи в `links.json` и `icons-cache`.
+Процесс PHP должен писать в `links.json` и `icons-cache/`.
 
-Пример для пользователя веб-сервера `www-data`:
+Пример для `www-data`:
 
 ```bash
 sudo chown -R www-data:www-data /var/www/homeserver-dashboard
@@ -31,16 +30,7 @@ sudo chmod 775 /var/www/homeserver-dashboard/icons-cache
 sudo chmod 664 /var/www/homeserver-dashboard/links.json
 ```
 
-Если `links.json` отсутствует:
-
-```bash
-touch /var/www/homeserver-dashboard/links.json
-echo '{"rows":{"_default":{"name":"","order":0,"collapsed":false}},"links":{}}' > /var/www/homeserver-dashboard/links.json
-sudo chown www-data:www-data /var/www/homeserver-dashboard/links.json
-sudo chmod 664 /var/www/homeserver-dashboard/links.json
-```
-
-## 4) Nginx конфигурация (пример)
+## 4) Nginx (пример)
 
 ```nginx
 server {
@@ -63,24 +53,35 @@ server {
 }
 ```
 
-Проверка и перезапуск:
+Применить:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 5) Проверка работы
+## 5) Проверка после деплоя
 
-- открывается главная страница;
-- добавляются карточки;
-- создаются категории;
-- drag&drop сохраняется после перезагрузки;
-- иконки загружаются и пишутся в `icons-cache/`.
+- открывается `Homeserver dashboard`;
+- создание карточки и категории работает;
+- drag&drop карточек и категорий сохраняется после reload;
+- сворачивание/разворачивание категорий сохраняется;
+- иконки пишутся в `icons-cache`.
 
-## 6) Частые проблемы
+## 6) Что важно про данные
 
-- **Ошибка сохранения карточек/категорий**: нет прав записи в `links.json`.
-- **Не сохраняются иконки**: нет прав записи в `icons-cache/`.
-- **403/500 при PHP**: неверный пользователь/группа или ограничение `open_basedir`.
+- `links.json` хранит категории (`rows`) и карточки (`links`) в одном файле;
+- при обновлениях приложение может автоматически мигрировать структуру и дополнять поля (`order`, `collapsed`, `row_id`);
+- резервная копия `links.json` перед большими изменениями — хорошая практика.
+
+## 7) Частые проблемы
+
+- **Не сохраняются карточки/категории**  
+  Нет прав записи в `links.json`.
+
+- **Не сохраняются иконки**  
+  Нет прав записи в `icons-cache/`.
+
+- **Ошибка 403/500**  
+  Неверный пользователь/группа, SELinux/AppArmor policy или ограничения `open_basedir`.
 

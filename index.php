@@ -781,17 +781,23 @@ unset($entries);
         body { margin: 0; padding: 16px; background: radial-gradient(circle at top, #1e293b 0%, #0f172a 55%); color: #f8fafc; font-family: Inter, system-ui, sans-serif; min-height: 100vh; }
         @media (min-width: 768px) { body { padding: 40px; } }
         .dashboard { max-width: 1200px; margin: 0 auto; }
-        .dashboard-header { display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; gap: 12px; margin-bottom: 24px; }
-        @media (min-width: 1024px) { .dashboard-header { flex-direction: row; align-items: center; } }
+        .dashboard-header { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
+        .brand-block { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: rgba(15, 23, 42, 0.52); border: 1px solid rgba(148,163,184,0.25); }
+        .brand-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(145deg, rgba(37,99,235,0.35), rgba(99,102,241,0.25)); border: 1px solid rgba(96,165,250,0.35); color: #dbeafe; flex-shrink: 0; }
+        .brand-icon svg { width: 22px; height: 22px; }
+        .controls-block { display: flex; gap: 10px; align-items: center; width: 100%; }
         .subtitle { color: #94a3b8; margin: 4px 0 0; font-size: 14px; }
-        .add-form { display: flex; gap: 8px; width: 100%; }
-        @media (min-width: 1024px) { .add-form { width: auto; } }
-        .row-tools { display: flex; gap: 8px; width: 100%; margin-top: 10px; align-items: center; }
+        .add-form { display: flex; gap: 8px; width: 100%; align-items: center; flex-wrap: nowrap; flex: 1 1 700px; }
+        .row-tools { display: flex; gap: 8px; width: auto; align-items: center; flex-wrap: nowrap; flex: 0 1 420px; margin: 0; }
+        @media (max-width: 820px) {
+            .controls-block { flex-wrap: wrap; }
+            .add-form, .row-tools { flex-wrap: wrap; width: 100%; flex: 1 1 100%; }
+        }
         .url-input, .search-input { width: 100%; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: #f8fafc; border-radius: 12px; outline: none; }
         .url-input { padding: 12px 16px; min-width: 220px; font-size: 14px; }
         .row-name-input { min-width: 0; }
         .search-input { padding: 10px 16px; font-size: 14px; }
-        .row-select { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: #f8fafc; border-radius: 12px; padding: 10px 12px; font-size: 14px; min-width: 150px; }
+        .row-select { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: #f8fafc; border-radius: 12px; padding: 10px 12px; font-size: 14px; min-width: 150px; width: 100%; }
         .url-input:focus, .search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35); }
         .add-btn { border: 0; background: #2563eb; color: #fff; border-radius: 12px; padding: 12px 24px; font-weight: 700; cursor: pointer; }
         .row-tools .add-btn { white-space: nowrap; }
@@ -876,10 +882,17 @@ unset($entries);
 <body>
     <div class="dashboard">
         <header class="dashboard-header">
-            <div>
-                <h1>🏠 Dashboard</h1>
-                <p class="subtitle">Локальные сервисы в одном месте</p>
+            <div class="brand-block">
+                <div class="brand-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 10.5L12 3l9 7.5"></path>
+                        <path d="M5.5 9.5V20a1 1 0 001 1H10v-6h4v6h3.5a1 1 0 001-1V9.5"></path>
+                        <path d="M9 8h6"></path>
+                    </svg>
+                </div>
+                <div><h1>Homeserver dashboard</h1></div>
             </div>
+            <div class="controls-block">
             <form method="POST" class="add-form" autocomplete="off">
                 <input type="url" name="url" placeholder="http://192.168.1.10" required 
                        class="url-input">
@@ -897,6 +910,7 @@ unset($entries);
                 <input type="text" name="row_name" class="url-input row-name-input" placeholder="Название новой категории" required>
                 <button type="submit" class="add-btn">Создать категорию</button>
             </form>
+            </div>
         </header>
 
         <div class="search-wrap">
