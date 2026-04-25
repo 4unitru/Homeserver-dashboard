@@ -799,6 +799,20 @@ foreach (array_reverse($links, true) as $id => $link) {
         .modal-status { margin-top: 8px; font-size: 12px; color: #94a3b8; min-height: 16px; }
         .title-input { width: 100%; margin-bottom: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: #f8fafc; border-radius: 10px; outline: none; padding: 10px 12px; font-size: 14px; }
         .title-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35); }
+        .row-dropzone-empty { min-height: 92px; align-content: start; }
+        .row-dropzone-empty::before {
+            content: "Перетащите карточку в эту категорию";
+            display: block;
+            font-size: 12px;
+            color: #94a3b8;
+            border: 1px dashed rgba(148,163,184,0.45);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .icon-stack { display: flex; flex-direction: column; gap: 12px; }
+        .panel-subtitle { font-size: 12px; color: #94a3b8; margin: -2px 0 6px; }
     </style>
 </head>
 <body>
@@ -848,7 +862,7 @@ foreach (array_reverse($links, true) as $id => $link) {
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="cards-grid row-dropzone" data-row-id="<?= htmlspecialchars($row_id, ENT_QUOTES, 'UTF-8') ?>">
+                    <div class="cards-grid row-dropzone <?= empty($links_by_row[$row_id]) ? 'row-dropzone-empty' : '' ?>" data-row-id="<?= htmlspecialchars($row_id, ENT_QUOTES, 'UTF-8') ?>">
                     <?php foreach ($links_by_row[$row_id] as $entry): $id = $entry['id']; $link = $entry['link']; ?>
                         <div id="card-<?= htmlspecialchars($id, ENT_QUOTES, 'UTF-8') ?>"
                              data-card-id="<?= htmlspecialchars($id, ENT_QUOTES, 'UTF-8') ?>"
@@ -914,20 +928,20 @@ foreach (array_reverse($links, true) as $id => $link) {
                     <p class="small-text">Изменение применяется сразу к карточке.</p>
                 </div>
                 <div class="panel">
-                    <h3>Загрузить файл</h3>
-                    <form id="iconUploadForm" enctype="multipart/form-data">
-                        <input type="hidden" id="uploadIconId" name="update_icon_id" value="">
-                        <input type="file" name="icon_file" accept=".png,.ico,.svg,.jpg,.jpeg,.webp,.gif,image/*" class="file-input" required>
-                        <button type="submit" class="action-btn">Загрузить и применить</button>
-                    </form>
-                    <p class="small-text">Поддерживается до 2MB. Иконка сохраняется локально.</p>
-                    <button id="resetIconBtn" type="button" class="action-btn" style="margin-top:10px;background:#475569;">Сбросить на автоопределение</button>
-                </div>
-                <div class="panel">
-                    <h3>Поиск в бесплатной базе (Iconify)</h3>
-                    <div class="search-row">
-                        <input id="iconSearchInput" type="search" class="search-input" placeholder="Например: jellyfin, movie, server">
-                        <button id="iconSearchBtn" class="action-btn" type="button">Найти</button>
+                    <h3>Иконка сервиса</h3>
+                    <div class="panel-subtitle">Загрузите файл или выберите через поиск по "Iconify"</div>
+                    <div class="icon-stack">
+                        <form id="iconUploadForm" enctype="multipart/form-data">
+                            <input type="hidden" id="uploadIconId" name="update_icon_id" value="">
+                            <input type="file" name="icon_file" accept=".png,.ico,.svg,.jpg,.jpeg,.webp,.gif,image/*" class="file-input" required>
+                            <button type="submit" class="action-btn">Загрузить и применить</button>
+                            <p class="small-text">Поддерживается до 2MB. Иконка сохраняется локально.</p>
+                        </form>
+                        <div class="search-row">
+                            <input id="iconSearchInput" type="search" class="search-input" placeholder="Например: jellyfin, movie, server">
+                            <button id="iconSearchBtn" class="action-btn" type="button">Найти</button>
+                        </div>
+                        <button id="resetIconBtn" type="button" class="action-btn" style="background:#475569;">Сбросить на автоопределение</button>
                     </div>
                     <div id="iconSearchStatus" class="modal-status"></div>
                     <div id="iconResults" class="icon-results"></div>
@@ -953,7 +967,12 @@ foreach (array_reverse($links, true) as $id => $link) {
         const formData = new FormData();
         formData.append('delete_id', id);
         fetch('', { method: 'POST', body: formData }).then(() => {
-            document.getElementById('card-' + id).remove();
+            const card = document.getElementById('card-' + id);
+            const zone = card ? card.closest('.row-dropzone') : null;
+            if (card) card.remove();
+            if (zone && !zone.querySelector('.service-card')) {
+                zone.classList.add('row-dropzone-empty');
+            }
             updateEmptyState();
         });
     }
@@ -1283,8 +1302,13 @@ foreach (array_reverse($links, true) as $id => $link) {
             try {
                 const response = await fetch('', { method: 'POST', body: formData });
                 if (!response.ok) throw new Error();
+                const oldZone = cardEl.closest('.row-dropzone');
                 cardEl.dataset.rowId = targetRowId;
                 zone.appendChild(cardEl);
+                zone.classList.remove('row-dropzone-empty');
+                if (oldZone && oldZone !== zone && !oldZone.querySelector('.service-card')) {
+                    oldZone.classList.add('row-dropzone-empty');
+                }
             } catch (e) {
                 iconSearchStatus.textContent = 'Не удалось переместить карточку.';
             }
